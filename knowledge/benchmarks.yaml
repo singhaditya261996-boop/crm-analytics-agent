@@ -1,0 +1,30 @@
+# knowledge/benchmarks.yaml
+# Industry benchmark data for the Equans CRM Analytics Agent.
+# Source: BIFM FM Sector Survey 2024 unless noted.
+# Values are injected into LLM prompts when intent = benchmark/comparison/aggregation/trend/ranking.
+
+win_rate:
+  fm_sector_median: "28% (BIFM 2024)"
+  fm_sector_top_quartile: "42% (BIFM 2024)"
+  hard_fm_median: "31% (BIFM 2024)"
+  soft_fm_median: "24% (BIFM 2024)"
+
+sales_cycle_days:
+  fm_sector_median: "84 days (BIFM 2024)"
+  complex_deals_over_1m: "180 days (BIFM 2024)"
+  small_deals_under_100k: "45 days (BIFM 2024)"
+
+revenue_per_opportunity:
+  fm_sector_median: "£125k (BIFM 2024)"
+  large_account_median: "£750k (BIFM 2024)"
+
+pipeline_coverage:
+  fm_sector_recommended: "3x annual target (industry standard)"
+  healthy_ratio: "3.0–4.5x"
+
+average_deal_size:
+  fm_sector_median: "£210k (BIFM 2024)"
+  facilities_management: "£310k (BIFM 2024)"
+
+dormant_account_days:
+  fm_sector_typical: "90 days without activity = at risk"

@@ -1,0 +1,43 @@
+# ─── Core UI ───────────────────────────────────────────────────────────────
+streamlit>=1.35.0
+
+# ─── LLM Providers ─────────────────────────────────────────────────────────
+ollama>=0.2.1                  # Ollama Python SDK (local models)
+groq>=0.9.0                    # Groq cloud SDK (optional fallback)
+
+# ─── Data & Analytics ──────────────────────────────────────────────────────
+pandas>=2.2.0
+numpy>=1.26.0
+pyarrow>=16.0.0                # Parquet cache engine
+openpyxl>=3.1.2                # .xlsx read/write
+xlrd>=2.0.1                    # legacy .xls support
+
+# ─── Visualisation ─────────────────────────────────────────────────────────
+plotly>=5.22.0
+kaleido>=0.2.1                 # Plotly static image export (chart PNGs)
+
+# ─── Document Parsing ──────────────────────────────────────────────────────
+python-pptx>=0.6.23            # PowerPoint extraction
+pdfplumber>=0.11.0             # PDF text + table extraction
+pypdf>=4.2.0                   # PDF fallback / metadata
+Pillow>=10.3.0                 # Image handling
+pytesseract>=0.3.10            # OCR for screenshots (needs tesseract binary)
+
+# ─── Database & Persistence ────────────────────────────────────────────────
+sqlalchemy>=2.0.30             # SQLite ORM (tracker)
+
+# ─── Exports ───────────────────────────────────────────────────────────────
+python-docx>=1.1.2             # Session Word doc exports
+
+# ─── Config & Environment ──────────────────────────────────────────────────
+pyyaml>=6.0.1
+python-dotenv>=1.0.1
+
+# ─── Utilities ─────────────────────────────────────────────────────────────
+tenacity>=8.3.0                # Retry logic for LLM calls
+rapidfuzz>=3.9.0               # Fuzzy column-name matching for auto-join
+
+# ─── Testing ───────────────────────────────────────────────────────────────
+pytest>=8.2.0
+pytest-cov>=5.0.0
+faker>=25.0.0                  # Synthetic CRM data for tests

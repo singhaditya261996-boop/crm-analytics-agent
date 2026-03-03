@@ -1,0 +1,37 @@
+ollama:
+  base_url: http://localhost:11434
+  model: llama3.1:8b
+  vision_model: llava
+  timeout_seconds: 60
+  max_retries: 3
+  temperature: 0.1
+
+groq:
+  api_key: ''
+  model: llama-3.1-70b-versatile
+  enabled: true
+
+llm_provider: ollama   # ollama | groq
+
+data:
+  upload_folder: data/uploads/
+  cache_folder: data/.cache/
+  dormant_account_days: 90
+  join_confidence_threshold: 0.6
+  auto_join: true
+
+self_improvement:
+  enabled: true
+  max_iterations: 5
+  score_threshold: 85
+  critic_temperature: 0.2
+  log_all_iterations: true
+
+exports:
+  output_folder: exports/
+  auto_save_charts: true
+  log_llm_calls: true
+
+ui:
+  page_title: Equans CRM Analytics Agent
+  theme: dark

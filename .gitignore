@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+*.egg-info/
+
+# Env
+.env
+
+# Exports / runtime artifacts
+exports/
+data/uploads/
+data/.cache/
+
+# IDE
+.DS_Store
+*.swp
