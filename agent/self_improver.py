@@ -59,7 +59,7 @@ class SelfImprover:
 
     _CODE_FENCE_RE = re.compile(r"```(?:python)?\s*(.*?)```", re.DOTALL)
 
-    def __init__(self, llm_client: Any, config: dict) -> None:
+    def __init__(self, llm_client: Any, config: dict, tracker_db: Any = None) -> None:
         self.llm = llm_client
         cfg = config.get("self_improvement", {})
         self.enabled: bool = cfg.get("enabled", True)
@@ -67,6 +67,7 @@ class SelfImprover:
         self.score_threshold: int = cfg.get("score_threshold", 85)
         self.critic_temperature: float = cfg.get("critic_temperature", 0.2)
         self.log_all: bool = cfg.get("log_all_iterations", True)
+        self._tracker_db = tracker_db
 
     def improve(
         self,
@@ -88,6 +89,16 @@ class SelfImprover:
             if score >= self.score_threshold or verdict == "pass":
                 logger.info("Self-improvement passed at iteration %d (score=%d)", iteration, score)
                 current.iterations = iteration
+                # Log pattern only when a rewrite actually improved the result
+                if iteration > 1 and self._tracker_db is not None:
+                    try:
+                        self._tracker_db.log_pattern(
+                            question_type=getattr(current, "intent_type", None) or "unknown",
+                            code_pattern=current.code,
+                            score=float(score),
+                        )
+                    except Exception as exc:
+                        logger.debug("Pattern logging failed (non-fatal): %s", exc)
                 return current
 
             if iteration == self.max_iterations:

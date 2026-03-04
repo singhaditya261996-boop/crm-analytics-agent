@@ -35,3 +35,6 @@ exports:
 ui:
   page_title: Equans CRM Analytics Agent
   theme: dark
+
+tracker:
+  db_url: "sqlite:///tracker/crm_agent.db"

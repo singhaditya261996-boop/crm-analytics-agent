@@ -24,7 +24,10 @@ import yaml
 from agent.chart_generator import ChartGenerator, render_chart_ui
 from agent.llm_client import LLMClient
 from agent.query_engine import INTENT_TYPES, PivotHandler, QueryEngine, QueryResult
+from agent.self_improver import SelfImprover
 from agent.session_exporter import SessionExporter
+from tracker.csv_manager import CSVManager
+from tracker.database import TrackerDB
 from agenda.prompts import AGENDA_QUESTIONS, SECTION_TITLES, get_section
 from data.joiner import JoinCandidate, JoinDetector, render_join_ui
 from data.loader import DataLoader
@@ -111,6 +114,8 @@ _SS_DEFAULTS: dict[str, Any] = {
     "pending_updates":        {},
     "stale_questions":        set(),
     "watcher_started":        False,
+    # Module 12 — tracker
+    "tracker_db":             None,
 }
 
 
@@ -132,6 +137,13 @@ def _apply_theme() -> None:
 def _get_update_handler(cfg: dict) -> UpdateHandler:
     cache_dir = Path(cfg.get("data", {}).get("upload_folder", "data/uploads")).parent / ".cache"
     return UpdateHandler(cache_dir=cache_dir)
+
+
+def _get_tracker(cfg: dict) -> TrackerDB:
+    if st.session_state.tracker_db is None:
+        db_url = cfg.get("tracker", {}).get("db_url", TrackerDB.DEFAULT_URL)
+        st.session_state.tracker_db = TrackerDB(db_url=db_url)
+    return st.session_state.tracker_db
 
 
 def _load_files(uploaded_files: list, cfg: dict) -> None:
@@ -257,11 +269,15 @@ def _get_engine(cfg: dict) -> QueryEngine:
             except Exception:
                 pass
 
+        tracker = _get_tracker(cfg)
+        si = SelfImprover(llm_client=llm, config=cfg, tracker_db=tracker)
+
         st.session_state.engine = QueryEngine(
             llm_client=llm,
             dataframes=dfs,
             quality_report=quality_report,
             exports_dir=Path("exports"),
+            self_improver=si,
         )
     return st.session_state.engine
 
@@ -313,6 +329,19 @@ def _run_query(question: str, cfg: dict) -> QueryResult:
             _run_async(cg.generate_for_result(result))
         except Exception:
             pass
+
+    # Log query to tracker (non-fatal)
+    try:
+        _get_tracker(cfg).log_query(
+            question=result.question,
+            code=result.code,
+            result_summary=str(result.answer_text or result.result or "")[:500],
+            score=float(result.confidence_score),
+            iterations=result.iterations,
+            error=result.error,
+        )
+    except Exception:
+        pass
 
     return result
 
@@ -1515,6 +1544,59 @@ def _render_dashboard_tab() -> None:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# Tab 5 — History
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _render_history_tab(cfg: dict) -> None:
+    st.header("🧠 Query History & Patterns")
+    tracker = _get_tracker(cfg)
+    csv_mgr = CSVManager(tracker, output_folder=Path("exports"))
+
+    # ── Recent queries ────────────────────────────────────────────────────
+    st.subheader("📜 Recent Queries")
+    queries = tracker.get_recent_queries(n=50)
+    if queries:
+        df_q = pd.DataFrame(queries)[["timestamp", "question", "score", "iterations", "error"]]
+        st.dataframe(df_q, use_container_width=True)
+        if st.button("📥 Export Query Log CSV", key="hist_export_qlog"):
+            path = csv_mgr.export_query_log()
+            with open(path, "rb") as f:
+                st.download_button(
+                    "Save query_log.csv",
+                    data=f.read(),
+                    file_name=path.name,
+                    mime="text/csv",
+                    key="hist_dl_qlog",
+                )
+    else:
+        st.info("No queries logged yet — run a question in the Chat or Agenda tab.")
+
+    st.divider()
+
+    # ── Pattern memory ────────────────────────────────────────────────────
+    st.subheader("🔁 Pattern Memory")
+    patterns = tracker.get_patterns()
+    if patterns:
+        df_p = pd.DataFrame(patterns)[["question_type", "score", "use_count", "code_pattern"]]
+        st.dataframe(df_p, use_container_width=True)
+        if st.button("📥 Export Patterns CSV", key="hist_export_patterns"):
+            path = csv_mgr.export_patterns()
+            with open(path, "rb") as f:
+                st.download_button(
+                    "Save patterns.csv",
+                    data=f.read(),
+                    file_name=path.name,
+                    mime="text/csv",
+                    key="hist_dl_patterns",
+                )
+    else:
+        st.info(
+            "No patterns stored yet — patterns are saved after successful "
+            "self-improvement rewrites."
+        )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Entry point
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1533,11 +1615,12 @@ def main() -> None:
     st.title(f"📊 {cfg.get('ui', {}).get('page_title', 'Equans CRM Analytics Agent')}")
     st.caption("100% local · no data leaves this machine")
 
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "💬 Chat",
         "📋 Weekly Agenda",
         "🔍 Data Explorer",
         "📊 Insights Dashboard",
+        "🧠 History",
     ])
     with tab1:
         _render_chat_tab(cfg)
@@ -1547,6 +1630,8 @@ def main() -> None:
         _render_explorer_tab()
     with tab4:
         _render_dashboard_tab()
+    with tab5:
+        _render_history_tab(cfg)
 
 
 if __name__ == "__main__":
