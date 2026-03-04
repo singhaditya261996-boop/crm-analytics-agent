@@ -1,8 +1,8 @@
 """
-app.py — Streamlit entry point for the Equans CRM Analytics Agent (Module 9).
+app.py — Streamlit entry point for the Equans CRM Analytics Agent (Modules 9–14, integrated).
 
-Four tabs: Chat · Weekly Agenda · Data Explorer · Insights Dashboard
-All query results rendered through a single render_answer() component.
+Five tabs: Chat · Weekly Agenda · Data Explorer · Insights Dashboard · History
+All query results flow through: DataLoader → QueryEngine → SelfImprover → TrackerDB → render_answer().
 100% local — no data leaves this machine.
 """
 from __future__ import annotations
@@ -30,7 +30,7 @@ from tracker.csv_manager import CSVManager
 from tracker.database import TrackerDB
 from agenda.prompts import AGENDA_QUESTIONS, SECTION_TITLES, get_section
 from data.joiner import JoinCandidate, JoinDetector, render_join_ui
-from data.loader import DataLoader
+from data.loader import DataLoader, TableSchema
 from data.profiler import DataProfiler, render_profile_ui
 from data.update_handler import FileClassification, UpdateHandler
 
@@ -44,7 +44,7 @@ except ImportError:
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 CONFIG_PATH = Path(__file__).parent / "config" / "settings.yaml"
-APP_VERSION = "0.9.0"
+APP_VERSION = "1.0.0"
 
 _SECTION_COLORS = {
     1: "#1D4ED8",
@@ -116,6 +116,11 @@ _SS_DEFAULTS: dict[str, Any] = {
     "watcher_started":        False,
     # Module 12 — tracker
     "tracker_db":             None,
+    # Module 13 — self-improver / quality display
+    # Module 14 — integration wiring
+    "table_schemas":          {},    # name → TableSchema (TypeInferrer enriched)
+    "_ollama_checked":        False,
+    "_ollama_ok":             None,  # True / False / None (unknown)
 }
 
 
@@ -189,6 +194,12 @@ def _load_files(uploaded_files: list, cfg: dict) -> None:
                 handler.register(name, summary.new_fingerprint)
                 st.session_state.pending_updates[name] = summary
 
+            # Enrich schema for QueryEngine context (Module 14)
+            try:
+                st.session_state.table_schemas[name] = loader.detect_schema(df, name=name)
+            except Exception:
+                pass
+
             updated_names.append(name)
             new_count += 1
 
@@ -249,6 +260,16 @@ def _load_files_from_paths(paths: list[Path], cfg: dict) -> None:
 def _get_engine(cfg: dict) -> QueryEngine:
     if st.session_state.engine is None:
         llm = LLMClient(cfg)
+
+        # Run Ollama startup check once per session (Module 14)
+        if not st.session_state._ollama_checked:
+            try:
+                _run_async(llm.startup_check())
+                st.session_state["_ollama_ok"] = getattr(llm, "_ollama_available", True)
+            except Exception:
+                st.session_state["_ollama_ok"] = False
+            st.session_state["_ollama_checked"] = True
+
         dfs = dict(st.session_state.dataframes)
 
         if st.session_state.confirmed_joins and dfs:
@@ -269,12 +290,16 @@ def _get_engine(cfg: dict) -> QueryEngine:
             except Exception:
                 pass
 
+        # Pass TypeInferrer-enriched schemas for richer LLM context (Module 14)
+        all_schemas = list(st.session_state.get("table_schemas", {}).values())
+
         tracker = _get_tracker(cfg)
         si = SelfImprover(llm_client=llm, config=cfg, tracker_db=tracker)
 
         st.session_state.engine = QueryEngine(
             llm_client=llm,
             dataframes=dfs,
+            schemas=all_schemas,
             quality_report=quality_report,
             exports_dir=Path("exports"),
             self_improver=si,
@@ -862,8 +887,20 @@ def _render_sidebar(cfg: dict) -> None:
             st.session_state.llm_provider = provider
             st.session_state.engine = None
             st.session_state.chart_gen = None
+            st.session_state["_ollama_checked"] = False  # re-check on next query
             cfg["llm_provider"] = provider
-        st.caption("🟢 Ollama (local)" if provider == "ollama" else "☁️ Groq (cloud)")
+        if provider == "ollama":
+            ollama_ok = st.session_state.get("_ollama_ok")
+            if ollama_ok is True:
+                st.caption(
+                    f"🟢 Ollama running — {cfg.get('ollama', {}).get('model', 'llama3.1:8b')}"
+                )
+            elif ollama_ok is False:
+                st.warning("Ollama not reachable. Run `ollama serve` in a terminal.")
+            else:
+                st.caption("Ollama status unknown — run a query to check.")
+        else:
+            st.caption("☁️ Groq (cloud)")
 
         # ── Settings ─────────────────────────────────────────────────────
         with st.expander("⚙️ Settings", expanded=False):

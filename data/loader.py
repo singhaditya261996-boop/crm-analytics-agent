@@ -347,9 +347,20 @@ class TypeInferrer:
         sample = str(non_null.iloc[0])
         if not any(c.isdigit() for c in sample):
             return None
-        parsed = pd.to_datetime(series, errors="coerce", dayfirst=False)
-        parse_rate = parsed.notna().sum() / len(non_null)
-        if parse_rate >= _DATE_MIN_PARSE_RATE:
+        # Try explicit formats first to avoid pandas 2.x UserWarnings
+        for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%Y/%m/%d", "%d-%m-%Y", "%Y-%m-%dT%H:%M:%S"):
+            try:
+                parsed = pd.to_datetime(series, errors="coerce", format=fmt)
+                if parsed.notna().sum() / len(non_null) >= _DATE_MIN_PARSE_RATE:
+                    return parsed
+            except Exception:
+                continue
+        # Fallback: suppress pandas inference warnings
+        import warnings as _w
+        with _w.catch_warnings():
+            _w.simplefilter("ignore", UserWarning)
+            parsed = pd.to_datetime(series, errors="coerce", dayfirst=True)
+        if parsed.notna().sum() / len(non_null) >= _DATE_MIN_PARSE_RATE:
             return parsed
         return None
 
