@@ -36,6 +36,7 @@ python-dotenv>=1.0.1
 # ─── Utilities ─────────────────────────────────────────────────────────────
 tenacity>=8.3.0                # Retry logic for LLM calls
 rapidfuzz>=3.9.0               # Fuzzy column-name matching for auto-join
+sentence-transformers>=3.0.0   # Semantic pattern similarity (optional; word-overlap fallback)
 
 # ─── Testing ───────────────────────────────────────────────────────────────
 pytest>=8.2.0

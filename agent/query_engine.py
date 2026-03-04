@@ -187,6 +187,7 @@ class QueryResult:
     provider_used: str = ""
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     session_id: str = ""
+    iteration_log: list = field(default_factory=list)  # [{iteration, critic_score, critic_feedback, ...}]
 
     # ── Convenience aliases ────────────────────────────────────────────────────
     @property
@@ -751,20 +752,8 @@ class QueryEngine:
             result_df if result_df is not None else raw_result, retries
         )
 
-        # 10. Self-improvement hook (full impl in Module 13)
-        final_score = confidence_score
-        if self._self_improver is not None:
-            try:
-                legacy_qr = QueryResult(
-                    question=question, code=code, result=raw_result
-                )
-                improved = self._self_improver.improve(legacy_qr, self.dataframes)
-                if improved and improved.result is not None:
-                    final_score = getattr(improved, "confidence_score", confidence_score)
-            except Exception as exc:
-                logger.warning("Self-improver error (non-fatal): %s", exc)
-
-        return QueryResult(
+        # 10. Self-improvement loop (Module 13)
+        preliminary = QueryResult(
             question=question,
             code=code,
             result=raw_result,
@@ -777,11 +766,19 @@ class QueryEngine:
             pivot_df=pivot_df,
             confidence_score=confidence_score,
             benchmark_used=benchmark_used,
-            final_score=final_score,
+            final_score=confidence_score,
             provider_used=getattr(self._llm, "provider", "unknown"),
             timestamp=datetime.now(timezone.utc),
             session_id=self.session_id,
         )
+        if self._self_improver is not None:
+            try:
+                improved = self._self_improver.improve(preliminary, self.dataframes)
+                if improved is not None:
+                    return improved
+            except Exception as exc:
+                logger.warning("Self-improver error (non-fatal): %s", exc)
+        return preliminary
 
     def query(self, question: str) -> QueryResult:
         """Sync wrapper for run(). Blocks until the result is ready."""

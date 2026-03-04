@@ -663,7 +663,24 @@ def render_answer(result: QueryResult, *, expanded_rec: bool = True) -> None:
     if result.benchmark_used:
         st.info("📊 Benchmarked against FM sector data (BIFM 2024)")
 
-    # ── S8: Technical details ───────────────────────────────────────────────
+    # ── S8: Quality badge + iteration history ────────────────────────────────
+    if result.final_score > 0:
+        n_iter = result.iterations
+        model_tag = result.provider_used or "—"
+        badge_label = (
+            f"✨ Quality score: {result.final_score}/100 · "
+            f"{n_iter} iteration{'s' if n_iter != 1 else ''} · {model_tag}"
+        )
+        with st.expander(badge_label, expanded=False):
+            for rec in result.iteration_log:
+                fb = (rec.get("critic_feedback") or "")[:120]
+                st.caption(
+                    f"Iteration {rec['iteration']}: score {rec['critic_score']} — \"{fb}\""
+                )
+            if not result.iteration_log:
+                st.caption("No iteration details available.")
+
+    # ── S9: Technical details ───────────────────────────────────────────────
     with st.expander("Show technical details", expanded=False):
         st.code(result.code or "# No code generated", language="python")
         st.caption(
@@ -1634,5 +1651,25 @@ def main() -> None:
         _render_history_tab(cfg)
 
 
+def _cli_export_training_data() -> None:
+    """Export final-iteration training records with score >= 75 to a clean JSONL."""
+    import sys
+    from agent.self_improver import SelfImprover
+
+    cfg = load_config()
+    si = SelfImprover(
+        llm_client=None,   # not needed for export
+        config=cfg,
+        exports_dir=Path("exports"),
+    )
+    out = si.export_training_data()
+    print(f"Exported to: {out}")
+    sys.exit(0)
+
+
 if __name__ == "__main__":
-    main()
+    import sys
+    if "--export-training-data" in sys.argv:
+        _cli_export_training_data()
+    else:
+        main()
