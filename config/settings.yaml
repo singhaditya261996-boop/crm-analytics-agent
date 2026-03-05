@@ -38,3 +38,10 @@ ui:
 
 tracker:
   db_url: "sqlite:///tracker/crm_agent.db"
+
+knowledge:
+  knowledge_dir: "knowledge"
+  chroma_path: "data/.cache/chroma"
+  scrape_enabled: false          # set true to enable weekly intelligence scraper
+  scrape_day: "sun"
+  scrape_hour: 6

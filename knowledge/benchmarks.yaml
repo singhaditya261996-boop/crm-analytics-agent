@@ -1,15 +1,105 @@
-# knowledge/benchmarks.yaml
-# Industry benchmark data for the Equans CRM Analytics Agent.
-# Source: BIFM FM Sector Survey 2024 unless noted.
-# Values are injected into LLM prompts when intent = benchmark/comparison/aggregation/trend/ranking.
+# FM Industry Benchmarks — UK Market
+# Source: BIFM Annual Survey 2024, industry reports
+# Update annually or when better data is available
 
+win_rates:
+  competitive_tender:
+    low: 15
+    median: 28
+    high: 40
+    unit: "%"
+    source: "BIFM Annual Survey 2024"
+  incumbent_renewal:
+    low: 55
+    median: 68
+    high: 80
+    unit: "%"
+    source: "BIFM Annual Survey 2024"
+  framework_calloff:
+    low: 30
+    median: 47
+    high: 60
+    unit: "%"
+    source: "BIFM Annual Survey 2024"
+  direct_award:
+    low: 65
+    median: 78
+    high: 92
+    unit: "%"
+    source: "BIFM Annual Survey 2024"
+
+sales_cycle_days:
+  under_100k:
+    low: 20
+    median: 45
+    high: 75
+  between_100k_500k:
+    low: 60
+    median: 135
+    high: 200
+  between_500k_2m:
+    low: 150
+    median: 270
+    high: 400
+  over_2m:
+    low: 300
+    median: 450
+    high: 600
+
+revenue_concentration:
+  top_10_pct_accounts:
+    typical: 65
+    unit: "% of total revenue"
+  top_20_pct_accounts:
+    typical: 80
+    unit: "% of total revenue"
+  bottom_50_pct_accounts:
+    typical: 7
+    unit: "% of total revenue"
+
+pipeline_health:
+  coverage_ratio:
+    healthy: 3.0
+    warning: 2.0
+    critical: 1.5
+    unit: "pipeline value / revenue target"
+  stale_opportunity_days:
+    threshold: 90
+  average_bid_cost_pct:
+    low: 1.0
+    typical: 2.0
+    high: 3.5
+    unit: "% of contract value"
+
+deal_size_brackets:
+  small:
+    max: 100000
+    label: "Small (<£100k)"
+  mid:
+    min: 100000
+    max: 500000
+    label: "Mid (£100k-£500k)"
+  large:
+    min: 500000
+    max: 2000000
+    label: "Large (£500k-£2M)"
+  strategic:
+    min: 2000000
+    label: "Strategic (>£2M)"
+
+account_health:
+  dormant_threshold_days: 90
+  at_risk_threshold_days: 60
+  healthy_activity_days: 30
+
+# Legacy flat keys — retained for backward compatibility with BenchmarkInjector
 win_rate:
   fm_sector_median: "28% (BIFM 2024)"
   fm_sector_top_quartile: "42% (BIFM 2024)"
   hard_fm_median: "31% (BIFM 2024)"
   soft_fm_median: "24% (BIFM 2024)"
 
-sales_cycle_days:
+sales_cycle:
   fm_sector_median: "84 days (BIFM 2024)"
   complex_deals_over_1m: "180 days (BIFM 2024)"
   small_deals_under_100k: "45 days (BIFM 2024)"
@@ -20,7 +110,7 @@ revenue_per_opportunity:
 
 pipeline_coverage:
   fm_sector_recommended: "3x annual target (industry standard)"
-  healthy_ratio: "3.0–4.5x"
+  healthy_ratio: "3.0-4.5x"
 
 average_deal_size:
   fm_sector_median: "£210k (BIFM 2024)"

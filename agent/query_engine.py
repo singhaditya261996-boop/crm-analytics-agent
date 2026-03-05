@@ -104,6 +104,7 @@ The user asked: {question}
 Intent type: {intent_type}
 The analysis returned: {result_summary}
 Industry benchmarks (if relevant): {benchmark_context}
+Industry & company knowledge (if relevant): {knowledge_context}
 
 Write a clear, concise business interpretation. Follow this structure:
 
@@ -112,6 +113,7 @@ HEADLINE: One sentence stating the single most important finding.
 CONTEXT: 1-2 sentences explaining what this means for the business.
 If benchmark data is available, compare the result against it explicitly:
 e.g. "This is above/below the FM sector median of X%"
+If knowledge context references meeting notes, cite them: "According to your meeting notes from [date]..."
 
 DETAIL: 1-2 sentences on any notable patterns, outliers, or nuances.
 
@@ -126,6 +128,7 @@ for Equans, provide a brief actionable recommendation.
 Analysis result: {result_summary}
 Interpretation: {interpretation_text}
 Intent type: {intent_type}
+Industry & company knowledge (if relevant): {knowledge_context}
 
 Produce exactly three items in this exact format:
 
@@ -322,11 +325,13 @@ class RecommendationEngine:
         result_summary: str,
         interpretation: str,
         intent_type: str,
+        knowledge_context: str = "",
     ) -> dict[str, str]:
         system = _RECOMMEND_SYSTEM.format(
             result_summary=result_summary,
             interpretation_text=interpretation,
             intent_type=intent_type,
+            knowledge_context=knowledge_context or "No additional industry context available.",
         )
         try:
             raw = await self._llm.complete(system, "Generate the recommendation.")
@@ -662,6 +667,7 @@ class QueryEngine:
         benchmarks_path: Path | None = None,
         chroma_collection: Any | None = None,
         self_improver: Any | None = None,
+        knowledge_manager: Any | None = None,
         session_id: str | None = None,
         exports_dir: Path | None = None,
         # Legacy compat kwargs
@@ -672,6 +678,7 @@ class QueryEngine:
         self.schemas = schemas or []
         self.quality_report = quality_report or {}
         self.join_map = join_map or {}
+        self._knowledge_manager = knowledge_manager
 
         self._classifier = IntentClassifier(llm_client)
         self._recommender = RecommendationEngine(llm_client)
@@ -725,6 +732,23 @@ class QueryEngine:
             "pattern_memory": pattern_memory,
         }
 
+        # 3b. Industry knowledge layer (Module 15)
+        document_context = ""
+        km_benchmark_context = ""
+        if self._knowledge_manager is not None:
+            try:
+                km_result = self._knowledge_manager.get_relevant_context(question, intent_type)
+                document_context = km_result.get("document_context", "")
+                km_benchmark_context = km_result.get("benchmark_context") or ""
+                # Merge KM benchmarks with BenchmarkInjector benchmarks
+                if km_benchmark_context and benchmark_context:
+                    benchmark_context = benchmark_context + "\n\n" + km_benchmark_context
+                elif km_benchmark_context:
+                    benchmark_context = km_benchmark_context
+                    benchmark_used = True
+            except Exception as exc:
+                logger.debug("KnowledgeManager context retrieval failed (non-fatal): %s", exc)
+
         # 4. Generate code + execute (with up to _MAX_RETRIES retries)
         code, raw_result, error_count = await self._generate_and_execute(
             question, context
@@ -736,14 +760,16 @@ class QueryEngine:
         # 6. Build result summary for LLM prompt injection
         result_summary = self._summarise(result_df if result_df is not None else raw_result)
 
-        # 7. Interpret result
+        # 7. Interpret result (with industry knowledge context)
         answer_text = await self._interpret(
-            question, intent_type, result_summary, benchmark_context
+            question, intent_type, result_summary, benchmark_context,
+            knowledge_context=document_context,
         )
 
-        # 8. Generate recommendation
+        # 8. Generate recommendation (with industry knowledge context)
         recommendation = await self._recommender.generate(
-            result_summary, answer_text, intent_type
+            result_summary, answer_text, intent_type,
+            knowledge_context=document_context,
         )
 
         # 9. Score confidence
@@ -873,6 +899,7 @@ class QueryEngine:
         intent_type: str,
         result_summary: str,
         benchmark_context: str,
+        knowledge_context: str = "",
     ) -> str:
         if result_summary.startswith(("CANNOT_ANSWER", "I wasn't able")):
             return result_summary
@@ -881,6 +908,7 @@ class QueryEngine:
             intent_type=intent_type,
             result_summary=result_summary,
             benchmark_context=benchmark_context or "No benchmark data available.",
+            knowledge_context=knowledge_context or "No additional industry context available.",
         )
         try:
             return await self._llm.complete(system, "Write the business interpretation.")

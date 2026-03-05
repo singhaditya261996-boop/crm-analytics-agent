@@ -31,6 +31,8 @@ from tracker.database import TrackerDB
 from agenda.prompts import AGENDA_QUESTIONS, SECTION_TITLES, get_section
 from data.joiner import JoinCandidate, JoinDetector, render_join_ui
 from data.loader import DataLoader, TableSchema
+from knowledge.knowledge_manager import KnowledgeManager
+from knowledge.fine_tuning_prep import export_fine_tuning_dataset
 from data.profiler import DataProfiler, render_profile_ui
 from data.update_handler import FileClassification, UpdateHandler
 
@@ -121,6 +123,8 @@ _SS_DEFAULTS: dict[str, Any] = {
     "table_schemas":          {},    # name → TableSchema (TypeInferrer enriched)
     "_ollama_checked":        False,
     "_ollama_ok":             None,  # True / False / None (unknown)
+    # Module 15 — knowledge layer
+    "knowledge_manager":      None,
 }
 
 
@@ -149,6 +153,21 @@ def _get_tracker(cfg: dict) -> TrackerDB:
         db_url = cfg.get("tracker", {}).get("db_url", TrackerDB.DEFAULT_URL)
         st.session_state.tracker_db = TrackerDB(db_url=db_url)
     return st.session_state.tracker_db
+
+
+def _get_knowledge_manager(cfg: dict) -> KnowledgeManager:
+    if st.session_state.knowledge_manager is None:
+        km_cfg = cfg.get("knowledge", {})
+        km = KnowledgeManager(
+            knowledge_dir=km_cfg.get("knowledge_dir", "knowledge"),
+            chroma_path=km_cfg.get("chroma_path", "data/.cache/chroma"),
+        )
+        try:
+            km.load_all_knowledge()
+        except Exception as exc:
+            logger.warning("KnowledgeManager load failed (non-fatal): %s", exc)
+        st.session_state.knowledge_manager = km
+    return st.session_state.knowledge_manager
 
 
 def _load_files(uploaded_files: list, cfg: dict) -> None:
@@ -295,6 +314,7 @@ def _get_engine(cfg: dict) -> QueryEngine:
 
         tracker = _get_tracker(cfg)
         si = SelfImprover(llm_client=llm, config=cfg, tracker_db=tracker)
+        km = _get_knowledge_manager(cfg)
 
         st.session_state.engine = QueryEngine(
             llm_client=llm,
@@ -303,6 +323,7 @@ def _get_engine(cfg: dict) -> QueryEngine:
             quality_report=quality_report,
             exports_dir=Path("exports"),
             self_improver=si,
+            knowledge_manager=km,
         )
     return st.session_state.engine
 
@@ -924,6 +945,88 @@ def _render_sidebar(cfg: dict) -> None:
                 "Confidence threshold", 0, 100,
                 value=int(st.session_state.s_conf_threshold), step=5,
             )
+
+        # ── Meeting Notes (Module 15) ─────────────────────────────────────
+        st.divider()
+        st.subheader("📝 Add Meeting Notes")
+        with st.expander("Post-call notes form", expanded=False):
+            note_date = st.date_input(
+                "Meeting date",
+                value=datetime.now(timezone.utc).date(),
+                key="note_date",
+            )
+            note_learned = st.text_area(
+                "Key things we learned today",
+                placeholder="Bullet points — plain English",
+                key="note_learned",
+                height=80,
+            )
+            note_accounts = st.text_input(
+                "Accounts mentioned (comma-separated)",
+                key="note_accounts",
+            )
+            note_corrections = st.text_area(
+                "Data corrections agreed",
+                placeholder="What needs fixing in the CRM",
+                key="note_corrections",
+                height=60,
+            )
+            note_actions = st.text_area(
+                "Actions agreed with client",
+                placeholder="What we committed to do",
+                key="note_actions",
+                height=60,
+            )
+            note_strategic = st.text_area(
+                "Strategic context",
+                placeholder="Client priorities, concerns, plans",
+                key="note_strategic",
+                height=60,
+            )
+            if st.button("Save Notes", use_container_width=True, key="save_notes_btn"):
+                parts = []
+                if note_learned:
+                    parts.append(f"KEY LEARNINGS:\n{note_learned}")
+                if note_accounts:
+                    parts.append(f"ACCOUNTS MENTIONED: {note_accounts}")
+                if note_corrections:
+                    parts.append(f"DATA CORRECTIONS:\n{note_corrections}")
+                if note_actions:
+                    parts.append(f"ACTIONS AGREED:\n{note_actions}")
+                if note_strategic:
+                    parts.append(f"STRATEGIC CONTEXT:\n{note_strategic}")
+                if parts:
+                    note_text = "\n\n".join(parts)
+                    date_str = note_date.strftime("%Y%m%d")
+                    try:
+                        km = _get_knowledge_manager(cfg)
+                        saved = km.add_meeting_note(note_text, session_date=date_str)
+                        # Cross-reference accounts against CRM data
+                        if note_accounts and st.session_state.dataframes:
+                            known = set()
+                            for df in st.session_state.dataframes.values():
+                                for col in df.columns:
+                                    if "account" in col.lower() or "name" in col.lower():
+                                        known.update(df[col].dropna().astype(str).str.lower())
+                            mentioned = [a.strip() for a in note_accounts.split(",") if a.strip()]
+                            unknown = [a for a in mentioned if a.lower() not in known]
+                            if unknown:
+                                st.warning(
+                                    f"Account(s) not found in CRM data: {', '.join(unknown)} "
+                                    f"— check spelling."
+                                )
+                        st.success(
+                            f"Notes saved and indexed ({saved.name}) — "
+                            "the agent will reference these in future answers."
+                        )
+                        # Reset form fields
+                        for k in ["note_learned", "note_accounts", "note_corrections",
+                                  "note_actions", "note_strategic"]:
+                            st.session_state[k] = ""
+                    except Exception as exc:
+                        st.error(f"Could not save notes: {exc}")
+                else:
+                    st.info("Nothing to save — fill in at least one field.")
 
         # ── Export session ───────────────────────────────────────────────
         st.divider()
@@ -1704,9 +1807,26 @@ def _cli_export_training_data() -> None:
     sys.exit(0)
 
 
+def _cli_export_fine_tuning() -> None:
+    """Export fine-tuning dataset from training log (Module 15)."""
+    import sys
+    min_score = 80
+    for arg in sys.argv:
+        if arg.startswith("--min-score="):
+            try:
+                min_score = int(arg.split("=", 1)[1])
+            except ValueError:
+                pass
+    out = export_fine_tuning_dataset(min_score=min_score)
+    print(f"Fine-tuning dataset: {out}")
+    sys.exit(0)
+
+
 if __name__ == "__main__":
     import sys
     if "--export-training-data" in sys.argv:
         _cli_export_training_data()
+    elif "--export-fine-tuning" in sys.argv:
+        _cli_export_fine_tuning()
     else:
         main()

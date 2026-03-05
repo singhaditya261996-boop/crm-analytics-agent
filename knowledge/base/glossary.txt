@@ -1,0 +1,20 @@
+GLOSSARY — Internal Terms and Abbreviations
+
+[Team to fill in — examples below]
+
+TFM: Total Facilities Management — full service offering
+Hard FM: Mechanical and electrical maintenance, HVAC, fabric maintenance
+Soft FM: Cleaning, security, catering, waste management
+TUPE: Transfer of Undertakings (Protection of Employment) — staff transfer regulations
+PPM: Planned Preventative Maintenance
+Reactive: Reactive maintenance (unplanned)
+SLA: Service Level Agreement
+KPI: Key Performance Indicator
+QBR: Quarterly Business Review
+ITT: Invitation to Tender
+PQQ: Pre-Qualification Questionnaire
+Framework: Pre-approved supplier list — clients call off contracts directly
+CRM stages used by Equans: [list the actual stage names from the CRM data]
+Service line codes: [list any codes used in the data and what they mean]
+Account status values: [list exact values — Active, Dormant etc.]
+Win/Loss reason codes: [list any codes in the data]
