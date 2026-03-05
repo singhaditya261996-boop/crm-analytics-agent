@@ -1,0 +1,26 @@
+# Never include in Docker image
+data/.cache
+data/uploads
+exports/
+knowledge/scraped
+knowledge/meeting_notes
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.env.local
+.git
+.gitignore
+node_modules/
+*.log
+.DS_Store
+Thumbs.db
+tests/
+README*.md
+Makefile
+check_requirements.sh
+*.pptx
+*.pdf
+*.xlsx
+*.csv
