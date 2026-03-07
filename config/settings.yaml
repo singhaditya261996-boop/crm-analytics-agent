@@ -8,10 +8,10 @@ ollama:
 
 groq:
   api_key: ''
-  model: llama-3.1-70b-versatile
+  model: llama-3.3-70b-versatile
   enabled: true
 
-llm_provider: ollama   # ollama | groq
+llm_provider: groq   # ollama | groq
 
 data:
   upload_folder: data/uploads/

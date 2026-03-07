@@ -388,7 +388,7 @@ def _run_query(question: str, cfg: dict) -> QueryResult:
         _get_tracker(cfg).log_query(
             question=result.question,
             code=result.code,
-            result_summary=str(result.answer_text or result.result or "")[:500],
+            result_summary=str(result.answer_text if result.answer_text is not None else (result.result if not isinstance(result.result, pd.DataFrame) else ""))[:500],
             score=float(result.confidence_score),
             iterations=result.iterations,
             error=result.error,
@@ -530,8 +530,9 @@ def render_answer(result: QueryResult, *, expanded_rec: bool = True) -> None:
       7  Benchmark callout (if benchmark_used)
       8  Technical details (collapsible)
     """
-    answer_text = result.answer_text or str(result.result or "*(no answer)*")
-    is_failure = any(m in str(result.result or "") for m in _GRACEFUL_MARKERS)
+    _raw = result.result if not isinstance(result.result, pd.DataFrame) else None
+    answer_text = result.answer_text or str(_raw if _raw is not None else "*(no answer)*")
+    is_failure = any(m in str(_raw or "") for m in _GRACEFUL_MARKERS)
     is_cannot = "CANNOT_ANSWER" in answer_text
 
     # ── S1: Headline + badges ───────────────────────────────────────────────
