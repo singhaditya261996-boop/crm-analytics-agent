@@ -170,7 +170,8 @@ def _get_knowledge_manager(cfg: dict) -> KnowledgeManager:
     return st.session_state.knowledge_manager
 
 
-def _load_files(uploaded_files: list, cfg: dict) -> None:
+def _load_files(uploaded_files: list, cfg: dict) -> int:
+    """Returns the number of new/changed tables loaded."""
     upload_dir = Path(cfg.get("data", {}).get("upload_folder", "data/uploads"))
     upload_dir.mkdir(parents=True, exist_ok=True)
 
@@ -200,9 +201,13 @@ def _load_files(uploaded_files: list, cfg: dict) -> None:
             )
 
             if summary.classification == FileClassification.DUPLICATE:
-                continue
-
-            if summary.classification == FileClassification.NEW_TABLE:
+                if old_df is not None:
+                    # Data already in session state — truly nothing to do
+                    continue
+                # File unchanged on disk but not yet in session state (e.g. first
+                # run after dropping file into uploads/ manually) — load it anyway
+                st.session_state.dataframes[name] = df
+            elif summary.classification == FileClassification.NEW_TABLE:
                 st.session_state.dataframes[name] = df
                 handler.register(name, summary.new_fingerprint)
             else:
@@ -248,6 +253,8 @@ def _load_files(uploaded_files: list, cfg: dict) -> None:
         st.session_state.chart_gen = None
         st.success(f"Loaded {new_count} new/changed file(s).")
 
+    return new_count
+
 
 def _load_files_from_paths(paths: list[Path], cfg: dict) -> None:
     """Load files from disk paths (used by folder-watcher sentinel)."""
@@ -278,7 +285,7 @@ def _load_files_from_paths(paths: list[Path], cfg: dict) -> None:
 
 def _get_engine(cfg: dict) -> QueryEngine:
     if st.session_state.engine is None:
-        llm = LLMClient(cfg)
+        llm = LLMClient()
 
         # Run Ollama startup check once per session (Module 14)
         if not st.session_state._ollama_checked:
@@ -330,7 +337,7 @@ def _get_engine(cfg: dict) -> QueryEngine:
 
 def _get_chart_gen(cfg: dict) -> ChartGenerator:
     if st.session_state.chart_gen is None:
-        llm = LLMClient(cfg)
+        llm = LLMClient()
         st.session_state.chart_gen = ChartGenerator(
             llm_client=llm,
             exports_dir=Path("exports"),
@@ -409,17 +416,17 @@ def _dq_traffic_light(profile: Any) -> str:
 
 def _build_kpi_html(dfs: dict[str, pd.DataFrame]) -> str:
     all_cols = {
-        col.lower(): (tbl, df)
+        col.lower(): (col, df)
         for tbl, df in dfs.items()
         for col in df.columns
     }
 
     def _try_sum(keywords: list[str]) -> str:
         for kw in keywords:
-            for col_lower, (_, df) in all_cols.items():
+            for col_lower, (orig_col, df) in all_cols.items():
                 if kw in col_lower:
                     try:
-                        v = pd.to_numeric(df[col_lower], errors="coerce").sum()
+                        v = pd.to_numeric(df[orig_col], errors="coerce").sum()
                         return f"£{v:,.0f}"
                     except Exception:
                         pass
@@ -427,9 +434,9 @@ def _build_kpi_html(dfs: dict[str, pd.DataFrame]) -> str:
 
     def _try_count(keywords: list[str]) -> str:
         for kw in keywords:
-            for col_lower, (_, df) in all_cols.items():
+            for col_lower, (orig_col, df) in all_cols.items():
                 if kw in col_lower:
-                    return f"{df[col_lower].nunique():,}"
+                    return f"{df[orig_col].nunique():,}"
         return f"{sum(len(d) for d in dfs.values()):,}"
 
     dark = st.session_state.get("dark_mode", True)
@@ -743,7 +750,7 @@ def render_answer(result: QueryResult, *, expanded_rec: bool = True) -> None:
 
 def _get_exporter(cfg: dict) -> SessionExporter:
     """Return a SessionExporter wired to an LLMClient when data is loaded."""
-    llm = LLMClient(cfg) if st.session_state.dataframes else None
+    llm = LLMClient() if st.session_state.dataframes else None
     return SessionExporter(exports_dir=Path("exports"), llm_client=llm)
 
 
@@ -799,8 +806,10 @@ def _render_sidebar(cfg: dict) -> None:
             help="Supports Excel, CSV, PowerPoint, PDF, and images.",
         )
         if uploaded:
-            _load_files(uploaded, cfg)
+            n_loaded = _load_files(uploaded, cfg)
             st.session_state.data_updates = 0
+            if n_loaded > 0:
+                st.rerun()
 
         # ── Pending updates panel ─────────────────────────────────────────
         if st.session_state.pending_updates:
